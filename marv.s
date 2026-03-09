@@ -83,8 +83,6 @@ black_floor_sum_delta_var               EQU 0x28
 lowest_diff_enum_colour_var             EQU 0x29
 lowest_diff_score_var                   EQU 0x2A
 
-RACE_COL_var                            EQU 0x2B
-DRIVING_STATE_var                       EQU 0x2C
 
 current_sensor_cal_red_on_red_var       EQU 0x2D
 current_sensor_cal_red_on_green_var     EQU 0x2E
@@ -104,9 +102,10 @@ current_sensor_cal_blue_on_blue_var     EQU 0x39
 current_sensor_cal_blue_on_white_var    EQU 0x3A
 current_sensor_cal_blue_on_black_var    EQU 0x3B
 
-COL_L_var                               EQU 0x3C
-COL_C_var                               EQU 0x3D
-COL_R_var                               EQU 0x3E
+RACE_COL_var                            EQU 0x2B
+PERCEIVED_COLOUR_AT_SENSOR_BITS_var	EQU 0x3C
+DRIVING_STATE_var                       EQU 0x2C
+DRIVING_STATE_SSD_DISPLAY_var		EQU 0x3D
 
 ;</editor-fold>
 
@@ -261,6 +260,7 @@ CENTRE_DRIVING_STATE_val   equ 0x1
 RIGHT_DRIVING_STATE_val    equ 0x2
 STOP_DRIVING_STATE_val        equ 0x3
 LOST_DRIVING_STATE_val        equ 0x4
+	
 
  
  
@@ -858,7 +858,7 @@ FEEDBACK_COLOUR_STATE:
     MOVFF   current_state_symbol_var,SSD_OUT_var
     call    SET_SSD
     
-    call    poll_sensors_for_detected_colour
+    call    poll_sensors_for_average_detected_colour
     call    disp_centre_sensor_stored_colour
     
     call    NAV_STATE_IF_REQUIRED
@@ -866,7 +866,7 @@ GOTO    FEEDBACK_COLOUR_STATE
     
     
 ;</editor-fold>
-    
+   
  
     disp_centre_sensor_stored_colour:
     call    clear_disp_SSD_dot
@@ -900,7 +900,6 @@ GOTO    FEEDBACK_COLOUR_STATE
     
     
 LLI_STATE:
-    
 ;<editor-fold defaultstate="collapsed" desc="LLI SECTION">
     MOVLW   L_SSD
     MOVWF   current_state_symbol_var,a
@@ -989,22 +988,86 @@ GOTO    LLI_STATE
     
     MOVLW    U_SSD
     MOVWF    SSD_OUT_var,a
-    call    SET_SSD
+    call     SET_SSD
     return
     
     
     WAIT_FOR_LLI_TOUCH_START:
-    BTFSS    LLI_start_pressed_var,0,a
-    BRA    WAIT_FOR_LLI_TOUCH_START
+    BTFSS   LLI_start_pressed_var,0,a
+    BRA	    WAIT_FOR_LLI_TOUCH_START
     CLRF    LLI_start_pressed_var, a
     return
     
     POLL_SENSORS_FOR_NEWEST_DRIVING_STATE_AND_UPDATE_STATE:
     call    poll_sensors_for_average_detected_colour
-    call    set_driving_state_from_sensor_colour
+    call    set_bits_on_colour_perception_array
+    call    set_driving_state_from_saved_sensor_colour_perception_array
     return
     
-    set_driving_state_from_sensor_colour:
+    set_driving_state_from_saved_sensor_colour_perception_array:
+;LEFT_DRIVING_STATE_val    equ 0x0
+;CENTRE_DRIVING_STATE_val   equ 0x1
+;RIGHT_DRIVING_STATE_val    equ 0x2
+;STOP_DRIVING_STATE_val        equ 0x3
+;LOST_DRIVING_STATE_val        equ 0x4
+	MOVF	PERCEIVED_COLOUR_AT_SENSOR_BITS_var,W,a
+	XORLW	0b00000001
+	BZ	set_driving_state_right
+	
+	MOVF	PERCEIVED_COLOUR_AT_SENSOR_BITS_var,W,a
+	XORLW	0b00000010
+	BZ	set_driving_state_centre
+	
+	MOVF	PERCEIVED_COLOUR_AT_SENSOR_BITS_var,W,a
+	XORLW	0b00000100
+	BZ	set_driving_state_left
+	
+	MOVF	PERCEIVED_COLOUR_AT_SENSOR_BITS_var,W,a
+	XORLW	0b00000001
+	BZ	set_driving_state_right
+	
+	MOVF	PERCEIVED_COLOUR_AT_SENSOR_BITS_var,W,a
+	XORLW	0b00000001
+	BZ	set_driving_state_right
+	return
+	
+	set_driving_state_right:
+	    MOVLW   RIGHT_DRIVING_STATE_val
+;	    MOVWF   
+	    return
+	set_driving_state_centre:
+	    return
+	set_driving_state_left:
+	    return
+    
+    set_bits_on_colour_perception_array:
+                       
+    CLRF    PERCEIVED_COLOUR_AT_SENSOR_BITS_var,a
+		       
+    ;Check if L = selected colour
+    MOVF    RACE_COL_var,W,a
+    XORWF   sensor_L_read_colour_enum_var,a
+    BZ      set_L_on_line_bit
+    
+    ;Check if C = selected colour
+    MOVF    RACE_COL_var,W,a
+    XORWF   sensor_C_read_colour_enum_var,a
+    BZ      set_C_on_line_bit
+    
+    ;Check if R = selected colour
+    MOVF    RACE_COL_var,W,a
+    XORWF   sensor_R_read_colour_enum_var,a
+    BZ      set_R_on_line_bit
+    return
+	set_L_on_line_bit:
+	    BSF PERCEIVED_COLOUR_AT_SENSOR_BITS_var,2
+	return
+	set_C_on_line_bit:
+	    BSF PERCEIVED_COLOUR_AT_SENSOR_BITS_var,1
+	return
+	set_R_on_line_bit:
+	    BSF PERCEIVED_COLOUR_AT_SENSOR_BITS_var,0
+	return
     
 
 ;</editor-fold>
@@ -1080,10 +1143,15 @@ RETURN
 
 ;;Method is to check if the driving state self-repeats a certain amount of times before accepting a state change
 poll_sensors_for_average_detected_colour:
+    call    poll_sensors_for_detected_colour
     ;TODO IMPLEMENT
+    ;;This implementation will just check if it's the same as last time, and if not, will require a 
+    ;;confirmation reading before switching state. The number of confirmation readings can be changed if we want
+    ;;to implement averaging over a larger base. Currently at 4MHz, it does about 1000 readings per second
     return
     
 poll_sensors_for_detected_colour:
+    call    strobe_and_save_sensor_readings
     call    calc_perceived_colour_L
     call    calc_perceived_colour_C
     call    calc_perceived_colour_R
@@ -1587,10 +1655,7 @@ display_error:
 
 ;</editor-fold>
     
-;</editor-fold>
-    
-        
-    
+
  MUL1375_WREG:
     ; Input : WREG = x
     ; Output: WREG = min(255, x * 1.375)
@@ -1629,7 +1694,12 @@ display_error:
     ; Return result in W
     MOVF    temp_var2,W,a
     RETURN
-  
+      
+    
+;</editor-fold>
+    
+        
+    
 end
     
 
