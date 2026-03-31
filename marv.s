@@ -909,6 +909,7 @@ LLI_STATE:
     call    SET_SSD
     call    FLASH_RGB_DISP_DELAYED
     
+    call    LLI_SELECT_COLOUR    
     call    WAIT_FOR_LLI_TOUCH_START
     
     
@@ -998,6 +999,12 @@ GOTO    LLI_STATE
     BTFSS   LLI_start_pressed_var,0,a
     BRA	    WAIT_FOR_LLI_TOUCH_START
     CLRF    LLI_start_pressed_var, a
+    return
+    
+    LLI_SELECT_COLOUR:
+    ;todo impl
+    ;;thinking of copying the state select flow 
+    ;;(optional, likely a waste of time) mabye including an automatic function, where the detected colour gets followed
     return
     
     POLL_SENSORS_FOR_NEWEST_DRIVING_STATE_AND_UPDATE_STATE:
@@ -1740,7 +1747,7 @@ display_error:
     
 ;</editor-fold>
     
-        
+;This is to show how merging works
     
 end
     
