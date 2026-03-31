@@ -1747,13 +1747,8 @@ display_error:
     
 ;</editor-fold>
     
-<<<<<<< HEAD
-        
     ;test
-=======
-;This is to show how merging works
-    
->>>>>>> main
+
 end
     
 
