@@ -1747,7 +1747,6 @@ display_error:
     
 ;</editor-fold>
     
-;This is to show how merging works
     
 end
     
