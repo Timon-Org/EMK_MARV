@@ -545,15 +545,15 @@ STATE_SELECT_LOOP:
     MOVWF   current_state_symbol_var,a
     call    STATE_SELECT_INPUT
     
-    MOVLW   LLI_state_val
-    MOVWF   display_select_state_var,a
-    MOVLW   L_SSD
-    MOVWF   current_state_symbol_var,a
-    call    STATE_SELECT_INPUT
-    
     MOVLW   feedback_color_state_val
     MOVWF   display_select_state_var,a
     MOVLW   F_SSD
+    MOVWF   current_state_symbol_var,a
+    call    STATE_SELECT_INPUT
+    
+    MOVLW   LLI_state_val
+    MOVWF   display_select_state_var,a
+    MOVLW   L_SSD
     MOVWF   current_state_symbol_var,a
     call    STATE_SELECT_INPUT
     
@@ -657,6 +657,8 @@ STATE_NAV:
     MOVF    current_state_var,W, a        ; WREG = state
     XORLW    osc_delay_state_val        ; WREG = state ^ lit
     BZ        to_osc_delay
+;;If the current set state is not found (eg selecting_state_val = 0x0), go select a valid state
+    GOTO    STATE_SELECT_LOOP
 to_cal:
     GOTO    CAL_STATE
 to_LLI:
@@ -665,10 +667,7 @@ to_colour_feedback:
     GOTO    FEEDBACK_COLOUR_STATE
 to_osc_delay:
     GOTO    OSC_DELAY_STATE
-    
-;;If the current set state is not found, go select a valid state
 ;</editor-fold>
-GOTO STATE_SELECT_LOOP
 
     
 ;</editor-fold>
@@ -745,10 +744,9 @@ CAL_STATE:
     MOVWF   cal_floor_colour_var,a
     call    STROBE_SAVE_CAL_BLACK_FLOOR
     call    clear_disp_SSD_dot
-    
     call    BLINK_WHITE_DISP_TWICE_DELAYED
     
-    MOVLW   LLI_state_val
+    MOVLW   feedback_color_state_val
     MOVWF   must_navigate_to_var, a
     
     call    NAV_STATE_IF_REQUIRED
@@ -855,7 +853,7 @@ STROBE_SAVE_CAL_BLACK_FLOOR:
 FEEDBACK_COLOUR_STATE:
 ;<editor-fold defaultstate="collapsed" desc="FEEDBACK COLOUR SECTION">
 ;<editor-fold defaultstate="collapsed" desc="FEEDBACK COLOUR STATE">
-    MOVLW   L_SSD
+    MOVLW   F_SSD
     MOVWF   current_state_symbol_var,a
     MOVFF   current_state_symbol_var,SSD_OUT_var
     call    SET_SSD
@@ -874,19 +872,19 @@ GOTO    FEEDBACK_COLOUR_STATE
     call    clear_disp_SSD_dot
     MOVF    sensor_C_read_colour_enum_var,W,a
     XORLW   RED_COLOUR_STATE_val
-    BZ        set_disp_rgb_red
+    BZ        disp_sensing_red
     
     MOVF    sensor_C_read_colour_enum_var,W,a
     XORLW   GREEN_COLOUR_STATE_val
-    BZ        set_disp_rgb_green
+    BZ        disp_sensing_green
     
     MOVF    sensor_C_read_colour_enum_var,W,a
     XORLW   BLUE_COLOUR_STATE_val
-    BZ        set_disp_rgb_blue
+    BZ        disp_sensing_blue
     
     MOVF    sensor_C_read_colour_enum_var,W,a
     XORLW   WHITE_COLOUR_STATE_val
-    BZ        set_disp_rgb_white
+    BZ        disp_sensing_white
     
     MOVF    sensor_C_read_colour_enum_var,W,a
     XORLW   BLACK_COLOUR_STATE_val
@@ -894,10 +892,22 @@ GOTO    FEEDBACK_COLOUR_STATE
         
     return
     
+    disp_sensing_red:
+	call	set_disp_rgb_red
+	return
+    disp_sensing_green:
+	call	set_disp_rgb_green
+	return
+    disp_sensing_blue:
+	call	set_disp_rgb_blue
+	return
+    disp_sensing_white:
+	call	set_disp_rgb_white
+	return
     disp_sensing_black:
-    call    set_disp_rgb_black
-    call    set_disp_SSD_dot
-    return
+	call    set_disp_rgb_black
+	call    set_disp_SSD_dot
+	return
 ;</editor-fold>
     
     
@@ -1516,6 +1526,8 @@ strobe_and_save_sensor_readings:
     call    TIMEOUT_LED_WAIT_LED_GET_HIGH
     call    read_and_save_sensor_array_perception
     call    save_sensor_reading_to_strobe_blue
+    
+    call    set_strobe_leds_off
     
     return
  
