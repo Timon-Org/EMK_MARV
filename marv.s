@@ -44,7 +44,7 @@ cal_read_pressed_var                    EQU 0x0A
 SSD_OUT_var                             EQU 0x0B
 DISP_LED_OUT_VAR                        EQU 0x0C
 LLI_start_pressed_var                   EQU 0x0D
-cal_floor_colour_var                    EQU 0x0E
+;cal_floor_colour_var                    EQU 0x0E
 
 sensor_L_reading_var                    EQU 0x0F
 sensor_C_reading_var                    EQU 0x10
@@ -707,32 +707,24 @@ CAL_STATE:
     ;Cal Red
     call    set_disp_rgb_red
     call    WAIT_FOR_LEFT_BUTTON_PRESS_CAL_STATE
-    MOVLW   RED_COLOUR_STATE_val
-    MOVWF   cal_floor_colour_var,a
     call    STROBE_SAVE_CAL_RED_FLOOR
     call    BLINK_WHITE_DISP_TWICE_DELAYED
     
     ;Cal Green
     call    set_disp_rgb_green
     call    WAIT_FOR_LEFT_BUTTON_PRESS_CAL_STATE
-    MOVLW   GREEN_COLOUR_STATE_val
-    MOVWF   cal_floor_colour_var,a
     call    STROBE_SAVE_CAL_GREEN_FLOOR
     call    BLINK_WHITE_DISP_TWICE_DELAYED
     
     ;Cal Blue
     call    set_disp_rgb_blue
     call    WAIT_FOR_LEFT_BUTTON_PRESS_CAL_STATE
-    MOVLW   BLUE_COLOUR_STATE_val
-    MOVWF   cal_floor_colour_var,a
     call    STROBE_SAVE_CAL_BLUE_FLOOR
     call    BLINK_WHITE_DISP_TWICE_DELAYED
     
     ;Cal White
     call    set_disp_rgb_white
     call    WAIT_FOR_LEFT_BUTTON_PRESS_CAL_STATE
-    MOVLW   WHITE_COLOUR_STATE_val
-    MOVWF   cal_floor_colour_var,a
     call    STROBE_SAVE_CAL_WHITE_FLOOR
     call    BLINK_WHITE_DISP_TWICE_DELAYED
     
@@ -740,8 +732,6 @@ CAL_STATE:
     call    set_disp_rgb_black
     call    set_disp_SSD_dot
     call    WAIT_FOR_LEFT_BUTTON_PRESS_CAL_STATE
-    MOVLW   BLACK_COLOUR_STATE_val
-    MOVWF   cal_floor_colour_var,a
     call    STROBE_SAVE_CAL_BLACK_FLOOR
     call    clear_disp_SSD_dot
     call    BLINK_WHITE_DISP_TWICE_DELAYED
@@ -1214,6 +1204,7 @@ poll_sensors_for_detected_colour:
     call    calc_perceived_colour_L
     call    calc_perceived_colour_C
     call    calc_perceived_colour_R
+return
     
   
 ;Colour Calculation Method
@@ -1293,7 +1284,7 @@ poll_sensors_for_detected_colour:
     call    abs_val_subtraction_in_wreg
     MOVWF    red_floor_sum_delta_var,a
      
-    MOVF    matching_floor_to_strobe_colour_reading_diff_multiplier_val,W,a
+    MOVLW    matching_floor_to_strobe_colour_reading_diff_multiplier_val
     MULWF   red_floor_sum_delta_var,a
     MOVFF   PRODL,red_floor_sum_delta_var
     TSTFSZ  PRODH, a
