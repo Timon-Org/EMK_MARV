@@ -112,6 +112,11 @@ touch_delay4                            EQU 0x43
 touch_delay5                            EQU 0x44
 touch_adc_h                             EQU 0x45
 
+motor_power_left_var                    EQU 0x46
+motor_power_right_var                   EQU 0x47
+motor_dir_left_var                      EQU 0x48    ; bit 0: 0=forward, 1=reverse
+motor_dir_right_var                     EQU 0x49    ; bit 0: 0=forward, 1=reverse
+
 RACE_COL_var                            EQU 0x2B
 PERCEIVED_COLOUR_AT_SENSOR_BITS_var	EQU 0x3C
 DRIVING_STATE_var                       EQU 0x2C
@@ -270,6 +275,9 @@ CENTRE_DRIVING_STATE_val   equ 0x1
 RIGHT_DRIVING_STATE_val    equ 0x2
 STOP_DRIVING_STATE_val        equ 0x3
 LOST_DRIVING_STATE_val        equ 0x4
+
+PWM_SPEED_FULL  equ 15      ; 75% duty cycle — cruise/turn outer wheel
+PWM_SPEED_STOP  equ 0       ; 0% — motor off
 	
 
  
@@ -359,6 +367,17 @@ INT1_HANDLER:;RED BUTTON
     RETURN
     
     INT1_SET_PENDING_NAV_TO_STATE_SELECT:
+    ;;Check if in feedback colour state — lock colour as race colour and go to LLI
+    MOVLW   feedback_color_state_val
+    CPFSEQ  current_state_var,a
+    BRA     INT1_DEFAULT_NAV_TO_SELECT
+
+    MOVFF   sensor_C_read_colour_enum_var,RACE_COL_var
+    MOVLW   LLI_state_val
+    MOVWF   must_navigate_to_var,a
+    RETURN
+
+    INT1_DEFAULT_NAV_TO_SELECT:
     MOVLW    selecting_state_val
     MOVWF    must_navigate_to_var,a
     RETURN
@@ -516,13 +535,50 @@ Init:
     MOVWF   CAL_R_BLUE_ON_BLACK_var,b
 ;</editor-fold>
 
-            
+    ; PWM motor init — CCP1 on RC2 (right/IN3), CCP2 on RC1 (left/IN1)
+    ; IN2 and IN4 are grounded on the TC1508A board — forward/coast only
+    movlw   19
+    movwf   PR2, a              ; PR2=19 -> 50 kHz PWM period at 4 MHz
+    clrf    LATC, a
+    bcf     TRISC, 2, a         ; RC2/CCP1 = output (right motor IN3)
+    bcf     TRISC, 1, a         ; RC1/CCP2 = output (left motor IN1)
+    bcf     TRISC, 0, a         ; RC0 = output (left motor IN2 — reverse)
+    bcf     TRISC, 3, a         ; RC3 = output (right motor IN4 — reverse)
+    BCF     LATC, 0, a          ; IN2 low (not reversing)
+    BCF     LATC, 3, a          ; IN4 low (not reversing)
+    clrf    T2CON, a
+    clrf    TMR2, a
+    BSF     CCP1CON, 3, a       ; CCP1: PWM mode (1100)
+    BSF     CCP1CON, 2, a
+    BCF     CCP1CON, 1, a
+    BCF     CCP1CON, 0, a
+    BSF     CCP2CON, 3, a       ; CCP2: PWM mode (1100)
+    BSF     CCP2CON, 2, a
+    BCF     CCP2CON, 1, a
+    BCF     CCP2CON, 0, a
+    bsf     T2CON, 2, a         ; Enable Timer2
+    clrf    motor_power_left_var, a
+    clrf    motor_power_right_var, a
+    clrf    motor_dir_left_var, a
+    clrf    motor_dir_right_var, a
+    movlw   PWM_SPEED_STOP
+    movwf   CCPR1L, a           ; Right motor stopped
+    movwf   CCPR2L, a           ; Left motor stopped
+
+    ; LLI default race colour = RED (index 0). LLI_SELECT_COLOUR can override this.
+    MOVLW   RED_COLOUR_STATE_val
+    MOVWF   RACE_COL_var, a
+
+    ; Initialise driving state to LOST so display is defined from the start
+    MOVLW   LOST_DRIVING_STATE_val
+    MOVWF   DRIVING_STATE_var, a
+
 ;</editor-fold>
-    
-    
+
+
 ;<editor-fold defaultstate="collapsed" desc="COPYABLE FOLD">
 ;</editor-fold>
-    
+
 ;============ Main program ==============
 Main:
     GOTO STATE_SELECT_LOOP
@@ -907,6 +963,41 @@ GOTO    FEEDBACK_COLOUR_STATE
 	call    set_disp_SSD_dot
 	return
 ;</editor-fold>
+
+    ; Sets the RGB display LED to match RACE_COL_var (used in LLI_STATE before touch start)
+    set_disp_to_race_colour:
+    MOVF    RACE_COL_var,W,a
+    XORLW   RED_COLOUR_STATE_val
+    BZ      race_col_red
+
+    MOVF    RACE_COL_var,W,a
+    XORLW   GREEN_COLOUR_STATE_val
+    BZ      race_col_green
+
+    MOVF    RACE_COL_var,W,a
+    XORLW   BLUE_COLOUR_STATE_val
+    BZ      race_col_blue
+
+    MOVF    RACE_COL_var,W,a
+    XORLW   WHITE_COLOUR_STATE_val
+    BZ      race_col_white
+
+    ; Default (black or unknown): show white so something is visible
+    call    set_disp_rgb_white
+    RETURN
+
+    race_col_red:
+    call    set_disp_rgb_red
+    RETURN
+    race_col_green:
+    call    set_disp_rgb_green
+    RETURN
+    race_col_blue:
+    call    set_disp_rgb_blue
+    RETURN
+    race_col_white:
+    call    set_disp_rgb_white
+    RETURN
     
     
 LLI_STATE:
@@ -916,8 +1007,9 @@ LLI_STATE:
     MOVFF   current_state_symbol_var,SSD_OUT_var
     call    SET_SSD
     call    FLASH_RGB_DISP_DELAYED
-    
-    call    LLI_SELECT_COLOUR    
+    call    set_disp_to_race_colour     ; hold race colour on LED while waiting for touch
+
+    call    LLI_SELECT_COLOUR
     call    WAIT_FOR_LLI_TOUCH_START
     
     
@@ -964,35 +1056,58 @@ GOTO    LLI_STATE
     set_LLI_left:
     MOVLW    LEFT_DRIVING_STATE_val
     MOVWF    DRIVING_STATE_var,a
-    
     MOVLW    L_SSD
     MOVWF    SSD_OUT_var,a
     call    SET_SSD
-    return
+    MOVLW   PWM_SPEED_STOP
+    MOVWF   motor_power_left_var, a
+    call    set_motor_left
+    MOVLW   PWM_SPEED_FULL
+    MOVWF   motor_power_right_var, a
+    call    set_motor_right
+    GOTO    LLI_NAV_LOOP        ; reached via BZ branch — must loop, not return
+
     set_LLI_centre:
     MOVLW    CENTRE_DRIVING_STATE_val
     MOVWF    DRIVING_STATE_var,a
-    
     MOVLW    C_SSD
     MOVWF    SSD_OUT_var,a
     call    SET_SSD
-    return
+    MOVLW   PWM_SPEED_FULL
+    MOVWF   motor_power_left_var, a
+    call    set_motor_left
+    MOVLW   PWM_SPEED_FULL
+    MOVWF   motor_power_right_var, a
+    call    set_motor_right
+    GOTO    LLI_NAV_LOOP        ; reached via BZ branch — must loop, not return
+
     set_LLI_right:
     MOVLW    RIGHT_DRIVING_STATE_val
     MOVWF    DRIVING_STATE_var,a
-    
     MOVLW    r_SSD
     MOVWF    SSD_OUT_var,a
     call    SET_SSD
-    return
+    MOVLW   PWM_SPEED_FULL
+    MOVWF   motor_power_left_var, a
+    call    set_motor_left
+    MOVLW   PWM_SPEED_STOP
+    MOVWF   motor_power_right_var, a
+    call    set_motor_right
+    GOTO    LLI_NAV_LOOP        ; reached via BZ branch — must loop, not return
+
     set_LLI_lost:
     MOVLW    LOST_DRIVING_STATE_val
     MOVWF    DRIVING_STATE_var,a
-    
     MOVLW    U_SSD
     MOVWF    SSD_OUT_var,a
     call    SET_SSD
-    return
+    MOVLW   PWM_SPEED_STOP
+    MOVWF   motor_power_left_var, a
+    call    set_motor_left
+    MOVLW   PWM_SPEED_FULL
+    MOVWF   motor_power_right_var, a
+    call    set_motor_right
+    GOTO    LLI_NAV_LOOP        ; reached via BZ branch — must loop, not return
     set_LLI_stop:
     MOVLW    STOP_DRIVING_STATE_val
     MOVWF    DRIVING_STATE_var,a
@@ -1000,9 +1115,45 @@ GOTO    LLI_STATE
     MOVLW    U_SSD
     MOVWF    SSD_OUT_var,a
     call     SET_SSD
+    MOVLW   PWM_SPEED_STOP
+    MOVWF   motor_power_left_var, a
+    call    set_motor_left
+    MOVWF   motor_power_right_var, a
+    call    set_motor_right
     return
     
     
+    ; Left motor: RC1/CCP2=IN1 (forward PWM), RC0=IN2 (reverse digital)
+    ; motor_dir_left_var bit 0: 0=forward, 1=reverse
+    set_motor_left:
+    BTFSC   motor_dir_left_var, 0, a    ; skip if forward
+    BRA     set_motor_left_rev
+    BCF     LATC, 0, a                  ; IN2 low
+    MOVF    motor_power_left_var, W, a
+    MOVWF   CCPR2L, a                   ; IN1 PWM
+    RETURN
+    set_motor_left_rev:
+    MOVLW   PWM_SPEED_STOP
+    MOVWF   CCPR2L, a                   ; IN1 off
+    BSF     LATC, 0, a                  ; IN2 high — full reverse
+    RETURN
+
+    ; Right motor: RC2/CCP1=IN3 (forward PWM), RC3=IN4 (reverse digital)
+    ; motor_dir_right_var bit 0: 0=forward, 1=reverse
+    set_motor_right:
+    BTFSC   motor_dir_right_var, 0, a   ; skip if forward
+    BRA     set_motor_right_rev
+    BCF     LATC, 3, a                  ; IN4 low
+    MOVF    motor_power_right_var, W, a
+    MOVWF   CCPR1L, a                   ; IN3 PWM
+    RETURN
+    set_motor_right_rev:
+    MOVLW   PWM_SPEED_STOP
+    MOVWF   CCPR1L, a                   ; IN3 off
+    BSF     LATC, 3, a                  ; IN4 high — full reverse
+    RETURN
+
+
     WAIT_FOR_LLI_TOUCH_START:
     CALL    MAIN_CAP_ROUTINE
     TSTFSZ  CAP_REG_var, a      ; skip RETURN if CAP_REG == 0 (no touch)
@@ -1191,52 +1342,52 @@ _TOUCH_1S_L1:
 	    return
     
     set_bits_on_colour_perception_array:
-                       
+
     CLRF    PERCEIVED_COLOUR_AT_SENSOR_BITS_var,a
     CLRF    has_read_all_black_on_sensor_array_var,a
-		       
-    ;Check if L = selected colour
+
+    ;Check if L = selected colour — fall through to check C regardless
     MOVF    RACE_COL_var,W,a
     XORWF   sensor_L_read_colour_enum_var,a
-    BZ      set_L_on_line_bit
-    
-    ;Check if C = selected colour
+    BNZ     skip_L_on_line_bit
+    BSF     PERCEIVED_COLOUR_AT_SENSOR_BITS_var,2
+    skip_L_on_line_bit:
+
+    ;Check if C = selected colour — fall through to check R regardless
     MOVF    RACE_COL_var,W,a
     XORWF   sensor_C_read_colour_enum_var,a
-    BZ      set_C_on_line_bit
-    
-    ;Check if R = selected colour
+    BNZ     skip_C_on_line_bit
+    BSF     PERCEIVED_COLOUR_AT_SENSOR_BITS_var,1
+    skip_C_on_line_bit:
+
+    ;Check if R = selected colour — fall through to all-black check regardless
     MOVF    RACE_COL_var,W,a
     XORWF   sensor_R_read_colour_enum_var,a
-    BZ      set_R_on_line_bit
-    
-    ;CHECK FOR ALL BLACK    
+    BNZ     skip_R_on_line_bit
+    BSF     PERCEIVED_COLOUR_AT_SENSOR_BITS_var,0
+    skip_R_on_line_bit:
+
+    ;If any race colour bit was set, skip all-black check
+    MOVF    PERCEIVED_COLOUR_AT_SENSOR_BITS_var,W,a
+    BNZ     not_all_black_on_line_bits
+
+    ;CHECK FOR ALL BLACK
     MOVF    sensor_L_read_colour_enum_var,W,a
     XORLW   BLACK_COLOUR_STATE_val
     BNZ     not_all_black_on_line_bits
-    
+
     MOVF    sensor_C_read_colour_enum_var,W,a
     XORLW   BLACK_COLOUR_STATE_val
     BNZ     not_all_black_on_line_bits
-    
+
     MOVF    sensor_R_read_colour_enum_var,W,a
     XORLW   BLACK_COLOUR_STATE_val
     BNZ     not_all_black_on_line_bits
-    
+
     ;ALL BLACK CONFIRMED
     BSF	    has_read_all_black_on_sensor_array_var,0,a
+    not_all_black_on_line_bits:
     return
-	set_L_on_line_bit:
-	    BSF PERCEIVED_COLOUR_AT_SENSOR_BITS_var,2
-	return
-	set_C_on_line_bit:
-	    BSF PERCEIVED_COLOUR_AT_SENSOR_BITS_var,1
-	return
-	set_R_on_line_bit:
-	    BSF PERCEIVED_COLOUR_AT_SENSOR_BITS_var,0
-	return
-	not_all_black_on_line_bits:
-	    return
     
 
 ;</editor-fold>
