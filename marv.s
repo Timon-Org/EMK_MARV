@@ -1583,7 +1583,7 @@ return
     call    abs_val_subtraction_in_wreg
     MOVWF    green_floor_sum_delta_var,a
     
-    MOVF    matching_floor_to_strobe_colour_reading_diff_multiplier_val,W,a
+    MOVLW   matching_floor_to_strobe_colour_reading_diff_multiplier_val
     MULWF   green_floor_sum_delta_var,a
     MOVFF   PRODL,green_floor_sum_delta_var
     TSTFSZ  PRODH, a
@@ -1609,7 +1609,7 @@ return
     call    abs_val_subtraction_in_wreg
     MOVWF    blue_floor_sum_delta_var,a
     
-    MOVF    matching_floor_to_strobe_colour_reading_diff_multiplier_val,W,a
+    MOVLW   matching_floor_to_strobe_colour_reading_diff_multiplier_val
     MULWF   blue_floor_sum_delta_var,a
     MOVFF   PRODL,blue_floor_sum_delta_var
     TSTFSZ  PRODH, a

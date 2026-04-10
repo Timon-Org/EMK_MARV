@@ -172,6 +172,9 @@ def make_cal_cb(floor, idx):
     def cb(event):
         cal[floor] = list(latest_frame)
         cal_dots[idx].set_color(DOT_CLR[idx])
+        print(f"\n=== CAL {floor.upper()} ===")
+        for lbl, val in zip(LABELS, cal[floor]):
+            print(f"  {lbl}: {val}")
         fig.canvas.draw_idle()
     return cb
 
@@ -331,6 +334,11 @@ def save_config(_):
     with open(CONFIG_FILE, 'w') as fp:
         json.dump(config, fp, indent=2)
     rec_header.set_text(f'Saved → {os.path.basename(CONFIG_FILE)}')
+    print(f"\n{'='*40}\nFULL CALIBRATION DUMP\n{'='*40}")
+    for floor in FLOORS:
+        if cal[floor] is not None:
+            print(f"  {floor.upper()}: {dict(zip(LABELS, cal[floor]))}")
+    print('='*40)
     fig.canvas.draw_idle()
 
 
