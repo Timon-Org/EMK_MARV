@@ -5,6 +5,7 @@ CONFIG  FOSC   = INTIO67   ; Internal oscillator, RA6/RA7 as I/O
 CONFIG  WDTEN  = OFF       ; Watchdog timer off
 CONFIG  MCLRE  = EXTMCLR   ; MCLR pin enabled (required for programmer)
 CONFIG  LVP    = ON        ; Low-voltage programming off
+CONFIG  CCP2MX = PORTC1 ;this is what makes CCP2 on RC1 if want to change replace with PORTB3, Tshepiso
 
 #include <xc.inc>
 #include "pic18f45k22.inc"
@@ -18,8 +19,14 @@ CONFIG  LVP    = ON        ; Low-voltage programming off
 SSD_PORT      equ PORTA
 DISP_LED_PORT      equ PORTB; <5:7> R,G,B
 STROBE_LED_PORT      equ PORTD; <0:2> R,G,B
+;PortC is currently used for motor driver control, i.e RC1 and RC2 only at the moment Tshepiso start
      ;Buttons     PORTB; <0:1> L,R
      ;Sensors     PORTE; <0:2> L,C,R
+     
+; Motor driver direction pins
+; Motor 1 (Left)  - INT1 = RC1, INT2 = ground or a cleared port
+; Motor 2 (Right) - INT3 = RC2, IN4 = ground or a cleared port
+; Adjust these pin numbers if need be. Tshepiso end
     
 ;============== Definition of variables ===============
 ; =========================
@@ -193,6 +200,11 @@ CAL_R_BLUE_ON_BLACK_var                 EQU 0x8C
 ADC_AN5       EQU  00010101B   ; RE0 = left sensor
 ADC_AN6       EQU  00011001B   ; RE1 = centre sensor
 ADC_AN7       EQU  00011101B   ; RE2 = right sensor
+       
+; These are the CCPR values (integer part of duty cycle)
+PWM_SPEED_FULL   equ 15   ; 75% duty cycle - cruise speed
+PWM_SPEED_SLOW   equ 5    ; 25% duty cycle - turning inner wheel
+PWM_SPEED_STOP   equ 0    ; 0%  - stopped
        
     ;;Suggested change to
 ;    ADC_AN5 EQU 00101001B   ; AN5 / RE0
@@ -430,9 +442,52 @@ Init:
     ; Global enable
     BSF     INTCON,7,0         ; GIE = 1 (INTCON<7>)
 
-    MOVLB        0x00
+    ;MOVLB        0x00
     
     CLRF    must_navigate_to_var,a
+    ;Tshepiso start
+    ; Set up period of PWM: 20  us = 50 kHz, this is fine
+    ; See HoPE p. 564 
+    movlw	19
+    movwf	PR2,a
+    
+    ; Set the CCP1 pin as an output (Initialize Port C) CCPR1L
+    clrf	PORTC,a
+    clrf	LATC,a
+    bcf		TRISC,2,a		; RC2/CCP1 an output
+    bcf		TRISC,1,a		; RC1/CCP2 an output, an alternative for this would be RB3
+    ;initialize PORTB and RB3 for CCP2 out for PWM motor.
+    
+    ; Set up Timer 2: no pre-or post scalers for this example
+    clrf	T2CON,a
+    clrf	TMR2,a
+    
+    ; Configure CCP1CON for PWM Motor 1    
+    ; CCP1M<3:0> = 11XX for PWM
+    BSF		CCP1CON,3,a
+    BSF		CCP1CON,2,a
+    BCF		CCP1CON,1,a
+    BCF		CCP1CON,0,a
+    
+    ; Configure CCP2CON for PWM Motor 2    
+    ; CCP1M<3:0> = 11XX for PWM
+    BSF		CCP2CON,3,a
+    BSF		CCP2CON,2,a
+    BCF		CCP2CON,1,a
+    BCF		CCP2CON,0,a
+    
+    ; Start timer 2
+    bsf		T2CON,2,a
+    
+; Start with motors stopped
+    ; Initialise duty cycle to zero - motors off at startup
+    movlw   PWM_SPEED_STOP
+    movwf   CCPR1L,a
+    movwf   CCPR2L,a
+    
+    MOVLB        0x00
+    ;Tshepiso end
+    
     ;Default values for sensor cal.
     ;<editor-fold defaultstate="collapsed" desc="SENSOR CAL DEFAULT VALUES">
     ;;;Make sure these are based on real readings with newest sensor
@@ -960,6 +1015,7 @@ GOTO    LLI_STATE
     MOVLW    L_SSD
     MOVWF    SSD_OUT_var,a
     call    SET_SSD
+    call    PWM_LEFT	;Tshepiso
     return
     set_LLI_centre:
     MOVLW    CENTRE_DRIVING_STATE_val
@@ -968,6 +1024,7 @@ GOTO    LLI_STATE
     MOVLW    C_SSD
     MOVWF    SSD_OUT_var,a
     call    SET_SSD
+    call    PWM_STRAIGHT    ;Tshepiso
     return
     set_LLI_right:
     MOVLW    RIGHT_DRIVING_STATE_val
@@ -976,6 +1033,7 @@ GOTO    LLI_STATE
     MOVLW    r_SSD
     MOVWF    SSD_OUT_var,a
     call    SET_SSD
+    call    PWM_RIGHT	;Tshepiso
     return
     set_LLI_lost:
     MOVLW    LOST_DRIVING_STATE_val
@@ -984,6 +1042,7 @@ GOTO    LLI_STATE
     MOVLW    U_SSD
     MOVWF    SSD_OUT_var,a
     call    SET_SSD
+    call    PWM_LOST	;Tshepiso
     return
     set_LLI_stop:
     MOVLW    STOP_DRIVING_STATE_val
@@ -992,6 +1051,7 @@ GOTO    LLI_STATE
     MOVLW    U_SSD
     MOVWF    SSD_OUT_var,a
     call     SET_SSD
+    call    PWM_STOP	;Tshepiso
     return
     
     
@@ -1121,8 +1181,58 @@ GOTO    LLI_STATE
 
 ;</editor-fold>
 
-
-    
+;The following section is PWM for the motor to drive and their control
+;The following section was done by ;Tshepiso start
+PWM_LEFT:
+;<editor-fold defaultstate="collapsed" desc="PWM_LEFT SECTION">
+    ; Line is to the left - slow down left motor, keep right fast
+    ; Both motors still forward direction
+    ; Slow left, fast right
+    movlw   PWM_SPEED_SLOW
+    movwf   CCPR1L,a        ; Left motor slower
+    movlw   PWM_SPEED_FULL
+    movwf   CCPR2L,a        ; Right motor faster
+    return
+;</editor-fold>   
+PWM_RIGHT:
+;<editor-fold defaultstate="collapsed" desc="PWM_RIGHT SECTION">
+    ; Line is to the right - slow down right motor, keep left fast
+    ; Both motors still forward direction
+    ; Fast left, slow right
+    movlw   PWM_SPEED_FULL
+    movwf   CCPR1L,a        ; Left motor faster
+    movlw   PWM_SPEED_SLOW
+    movwf   CCPR2L,a        ; Right motor slower
+    return
+;</editor-fold>
+PWM_STRAIGHT:
+;<editor-fold defaultstate="collapsed" desc="PWM_STRAIGHT SECTION">
+; Both motors forward at slow speed- adjust if needed
+    movlw   PWM_SPEED_FULL
+    movwf   CCPR1L,a        ; Left motor speed
+    movwf   CCPR2L,a        ; Right motor speed
+    return
+;</editor-fold>
+PWM_STOP:
+;<editor-fold defaultstate="collapsed" desc="PWM_STOP SECTION">
+    ; All motors off - direction pins low, duty cycle zero
+    movlw   PWM_SPEED_STOP
+    movwf   CCPR1L,a
+    movwf   CCPR2L,a
+    return
+;</editor-fold>
+PWM_LOST:
+;<editor-fold defaultstate="collapsed" desc="PWM_LOST SECTION">
+ ; No reverse available - do a gentle curve to search
+    ; Slow the left motor more to curve left and search
+    movlw   PWM_SPEED_SLOW
+    movwf   CCPR1L,a        ; Left motor slow
+    movlw   PWM_SPEED_FULL
+    movwf   CCPR2L,a        ; Right motor faster - curves left
+    return 
+;</editor-fold>
+    ;Tshepiso end
+   
 OSC_DELAY_STATE:
     call    SET_SSD
     call    NAV_STATE_IF_REQUIRED
