@@ -102,8 +102,16 @@ current_sensor_cal_blue_on_blue_var     EQU 0x39
 current_sensor_cal_blue_on_white_var    EQU 0x3A
 current_sensor_cal_blue_on_black_var    EQU 0x3B
 
-has_read_all_black_on_sensor_array_var	EQU 0x3E  
-    
+has_read_all_black_on_sensor_array_var	EQU 0x3E
+
+CAP_REG_var                             EQU 0x3F
+touch_delay1                            EQU 0x40
+touch_delay2                            EQU 0x41
+touch_delay3                            EQU 0x42
+touch_delay4                            EQU 0x43
+touch_delay5                            EQU 0x44
+touch_adc_h                             EQU 0x45
+
 RACE_COL_var                            EQU 0x2B
 PERCEIVED_COLOUR_AT_SENSOR_BITS_var	EQU 0x3C
 DRIVING_STATE_var                       EQU 0x2C
@@ -996,11 +1004,123 @@ GOTO    LLI_STATE
     
     
     WAIT_FOR_LLI_TOUCH_START:
-    BTFSS   LLI_start_pressed_var,0,a
-    BRA	    WAIT_FOR_LLI_TOUCH_START
-    CLRF    LLI_start_pressed_var, a
-    return
+    CALL    MAIN_CAP_ROUTINE
+    TSTFSZ  CAP_REG_var, a      ; skip RETURN if CAP_REG == 0 (no touch)
+    RETURN
+    BRA     WAIT_FOR_LLI_TOUCH_START
     
+; ============================================================
+; MAIN_CAP_ROUTINE: samples RB2/AN8 twice, sets CAP_REG_var if touch detected
+; Touch detected = ADC reading < 0xFA (250)
+MAIN_CAP_ROUTINE:
+    MOVLB   0xF
+    BSF     ANSELB, 2, b        ; RB2 = analog (AN8)
+    MOVLB   0x0
+    MOVLW   0x11                ; ADCON0: CHS=01000 (AN8), ADON=1
+    MOVWF   ADCON0, a
+    CLRF    ADCON1, a           ; Vref+ = VDD, Vref- = VSS
+    MOVLW   00101011B           ; Left-justify, 12 Tad, Fosc/32
+    MOVWF   ADCON2, a
+
+    CALL    CAP_TOUCH_ROUTINE
+    CALL    _TOUCH_1S_DELAY
+    CALL    CAP_TOUCH_ROUTINE   ; Sample twice to avoid false triggers
+
+    MOVLW   0xFA                ; CAP_THRESHOLD = 250
+    CPFSLT  touch_adc_h, a     ; Skip if touch_adc_h < 250 (touch detected)
+    BRA     MAIN_CAP_NO_TOUCH
+    SETF    CAP_REG_var, a
+    BRA     MAIN_CAP_DONE
+
+MAIN_CAP_NO_TOUCH:
+    CLRF    CAP_REG_var, a
+
+MAIN_CAP_DONE:
+    ; Restore RB2 to digital and ADC config for sensor readings
+    MOVLB   0xF
+    BCF     ANSELB, 2, b        ; RB2 back to digital
+    MOVLB   0x0
+    CLRF    ADCON1, a
+    MOVLW   00101011B
+    MOVWF   ADCON2, a
+    RETURN
+
+
+; ============================================================
+; CAP_TOUCH_ROUTINE: discharge/charge RB2, ADC sample -> touch_adc_h
+; Requires ADCON0 already set to AN8 channel by MAIN_CAP_ROUTINE
+CAP_TOUCH_ROUTINE:
+    MOVLB   0xF
+    BCF     ANSELB, 2, b        ; Disable analog (digital drive mode)
+    MOVLB   0x0
+
+    BCF     TRISB, 2, a         ; RB2 = output
+    BCF     PORTB, 2, a         ; Discharge internal capacitor
+
+    CALL    _TOUCH_1MS_DELAY
+
+    BSF     PORTB, 2, a         ; Charge capacitor
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+    BSF     TRISB, 2, a         ; RB2 = input (stop driving)
+    NOP
+    NOP
+    NOP
+    NOP
+    NOP
+
+    MOVLB   0xF
+    BSF     ANSELB, 2, b        ; Re-enable analog (AN8)
+    MOVLB   0x0
+
+    BSF     ADCON0, 1, a        ; GO = 1, start ADC conversion
+CAP_ADC_POLL:
+    BTFSC   ADCON0, 1, a        ; Wait for GO = 0 (conversion complete)
+    BRA     CAP_ADC_POLL
+    MOVFF   ADRESH, touch_adc_h
+    RETURN
+
+
+; ============================================================
+; _TOUCH_1MS_DELAY: ~1 ms at 4 MHz
+_TOUCH_1MS_DELAY:
+    MOVLW   0xA6
+    MOVWF   touch_delay5, a
+_TOUCH_1MS_L2:
+    MOVLW   0x04
+    MOVWF   touch_delay4, a
+_TOUCH_1MS_L1:
+    DECFSZ  touch_delay4, f, a
+    BRA     _TOUCH_1MS_L1
+    DECFSZ  touch_delay5, f, a
+    BRA     _TOUCH_1MS_L2
+    RETURN
+
+
+; ============================================================
+; _TOUCH_1S_DELAY: ~100 ms at 4 MHz (between double-sample)
+_TOUCH_1S_DELAY:
+    MOVLW   0xCA
+    MOVWF   touch_delay3, a
+_TOUCH_1S_L3:
+    MOVLW   0x1B
+    MOVWF   touch_delay2, a
+_TOUCH_1S_L2:
+    MOVLW   0x28
+    MOVWF   touch_delay1, a
+_TOUCH_1S_L1:
+    DECFSZ  touch_delay1, f, a
+    BRA     _TOUCH_1S_L1
+    DECFSZ  touch_delay2, f, a
+    BRA     _TOUCH_1S_L2
+    DECFSZ  touch_delay3, f, a
+    BRA     _TOUCH_1S_L3
+    RETURN
+
+
     LLI_SELECT_COLOUR:
     ;todo impl
     ;;thinking of copying the state select flow 
