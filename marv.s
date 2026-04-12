@@ -462,76 +462,106 @@ Init:
     CLRF    must_navigate_to_var,a
     ;Default values for sensor cal.
     ;<editor-fold defaultstate="collapsed" desc="SENSOR CAL DEFAULT VALUES">
-    ;;;Make sure these are based on real readings with newest sensor
-    ;================= WHITE surface =================
-    MOVLW   0xFF
-    ; Left sensor
-    MOVWF   CAL_L_RED_ON_WHITE_var,b
-    MOVWF   CAL_L_GREEN_ON_WHITE_var,b
-    MOVWF   CAL_L_BLUE_ON_WHITE_var,b
-    ; Centre sensor
-    MOVWF   CAL_C_RED_ON_WHITE_var,b
-    MOVWF   CAL_C_GREEN_ON_WHITE_var,b
-    MOVWF   CAL_C_BLUE_ON_WHITE_var,b
-    ; Right sensor
-    MOVWF   CAL_R_RED_ON_WHITE_var,b
-    MOVWF   CAL_R_GREEN_ON_WHITE_var,b
-    MOVWF   CAL_R_BLUE_ON_WHITE_var,b
-    ;================= GREEN surface =================
-    MOVLW   0xB8
-    ; Left sensor
-    MOVWF   CAL_L_RED_ON_GREEN_var,b
-    MOVWF   CAL_L_GREEN_ON_GREEN_var,b
-    MOVWF   CAL_L_BLUE_ON_GREEN_var,b
-    ; Centre sensor
-    MOVWF   CAL_C_RED_ON_GREEN_var,b
-    MOVWF   CAL_C_GREEN_ON_GREEN_var,b
-    MOVWF   CAL_C_BLUE_ON_GREEN_var,b
-    ; Right sensor
-    MOVWF   CAL_R_RED_ON_GREEN_var,b
-    MOVWF   CAL_R_GREEN_ON_GREEN_var,b
-    MOVWF   CAL_R_BLUE_ON_GREEN_var,b
+    ; Real measurements — sensor_plot.py dump 2026-04-11
     ;================= RED surface =================
-    MOVLW   0x88
-    ; Left sensor
+    ; L: R=10 G=23 B=8  C: R=39 G=50 B=29  R: R=30 G=17 B=6
+    MOVLW   10
     MOVWF   CAL_L_RED_ON_RED_var,b
+    MOVLW   23
     MOVWF   CAL_L_GREEN_ON_RED_var,b
+    MOVLW   8
     MOVWF   CAL_L_BLUE_ON_RED_var,b
-    ; Centre sensor
+    MOVLW   39
     MOVWF   CAL_C_RED_ON_RED_var,b
+    MOVLW   50
     MOVWF   CAL_C_GREEN_ON_RED_var,b
+    MOVLW   29
     MOVWF   CAL_C_BLUE_ON_RED_var,b
-    ; Right sensor
+    MOVLW   30
     MOVWF   CAL_R_RED_ON_RED_var,b
+    MOVLW   17
     MOVWF   CAL_R_GREEN_ON_RED_var,b
+    MOVLW   6
     MOVWF   CAL_R_BLUE_ON_RED_var,b
+    ;================= GREEN surface =================
+    ; L: R=3 G=28 B=24  C: R=14 G=60 B=54  R: R=9 G=45 B=12
+    MOVLW   3
+    MOVWF   CAL_L_RED_ON_GREEN_var,b
+    MOVLW   28
+    MOVWF   CAL_L_GREEN_ON_GREEN_var,b
+    MOVLW   24
+    MOVWF   CAL_L_BLUE_ON_GREEN_var,b
+    MOVLW   14
+    MOVWF   CAL_C_RED_ON_GREEN_var,b
+    MOVLW   60
+    MOVWF   CAL_C_GREEN_ON_GREEN_var,b
+    MOVLW   54
+    MOVWF   CAL_C_BLUE_ON_GREEN_var,b
+    MOVLW   9
+    MOVWF   CAL_R_RED_ON_GREEN_var,b
+    MOVLW   45
+    MOVWF   CAL_R_GREEN_ON_GREEN_var,b
+    MOVLW   12
+    MOVWF   CAL_R_BLUE_ON_GREEN_var,b
     ;================= BLUE surface =================
-    MOVLW   0xA9
-    ; Left sensor
+    ; L: R=1 G=10 B=15  C: R=1 G=18 B=28  R: R=2 G=17 B=13
+    MOVLW   1
     MOVWF   CAL_L_RED_ON_BLUE_var,b
+    MOVLW   10
     MOVWF   CAL_L_GREEN_ON_BLUE_var,b
+    MOVLW   15
     MOVWF   CAL_L_BLUE_ON_BLUE_var,b
-    ; Centre sensor
+    MOVLW   1
     MOVWF   CAL_C_RED_ON_BLUE_var,b
+    MOVLW   18
     MOVWF   CAL_C_GREEN_ON_BLUE_var,b
+    MOVLW   28
     MOVWF   CAL_C_BLUE_ON_BLUE_var,b
-    ; Right sensor
+    MOVLW   2
     MOVWF   CAL_R_RED_ON_BLUE_var,b
+    MOVLW   17
     MOVWF   CAL_R_GREEN_ON_BLUE_var,b
+    MOVLW   13
     MOVWF   CAL_R_BLUE_ON_BLUE_var,b
+    ;================= WHITE surface =================
+    ; L: R=16 G=57 B=43  C: R=53 G=120 B=111  R: R=38 G=75 B=30
+    MOVLW   16
+    MOVWF   CAL_L_RED_ON_WHITE_var,b
+    MOVLW   57
+    MOVWF   CAL_L_GREEN_ON_WHITE_var,b
+    MOVLW   43
+    MOVWF   CAL_L_BLUE_ON_WHITE_var,b
+    MOVLW   53
+    MOVWF   CAL_C_RED_ON_WHITE_var,b
+    MOVLW   120
+    MOVWF   CAL_C_GREEN_ON_WHITE_var,b
+    MOVLW   111
+    MOVWF   CAL_C_BLUE_ON_WHITE_var,b
+    MOVLW   38
+    MOVWF   CAL_R_RED_ON_WHITE_var,b
+    MOVLW   75
+    MOVWF   CAL_R_GREEN_ON_WHITE_var,b
+    MOVLW   30
+    MOVWF   CAL_R_BLUE_ON_WHITE_var,b
     ;================= BLACK surface =================
-    MOVLW   0x00
-    ; Left sensor
+    ; L: R=1 G=4 B=4  C: R=3 G=7 B=7  R: R=1 G=4 B=3
+    MOVLW   1
     MOVWF   CAL_L_RED_ON_BLACK_var,b
+    MOVLW   4
     MOVWF   CAL_L_GREEN_ON_BLACK_var,b
+    MOVLW   4
     MOVWF   CAL_L_BLUE_ON_BLACK_var,b
-    ; Centre sensor
+    MOVLW   3
     MOVWF   CAL_C_RED_ON_BLACK_var,b
+    MOVLW   7
     MOVWF   CAL_C_GREEN_ON_BLACK_var,b
+    MOVLW   7
     MOVWF   CAL_C_BLUE_ON_BLACK_var,b
-    ; Right sensor
+    MOVLW   1
     MOVWF   CAL_R_RED_ON_BLACK_var,b
+    MOVLW   4
     MOVWF   CAL_R_GREEN_ON_BLACK_var,b
+    MOVLW   3
     MOVWF   CAL_R_BLUE_ON_BLACK_var,b
 ;</editor-fold>
 
@@ -1042,11 +1072,11 @@ LLI_STATE:
     
     LLI_NAV_STOP:
     call    set_LLI_stop
-    
-    ;;todo impl
-    call    NAV_STATE_IF_REQUIRED
-    
-GOTO    LLI_STATE
+
+    ; Wait for RB1 press — ISR sets must_navigate_to_var = selecting_state_val
+    LLI_STOP_WAIT:
+    call    NAV_STATE_IF_REQUIRED   ; returns immediately if no change; navigates away on RB1
+    GOTO    LLI_STOP_WAIT
     
 ; LEFT_DRIVING_STATE_val    equ 0x0
 ; CENTRE_DRIVING_STATE_val    equ 0x1
