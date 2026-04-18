@@ -20,6 +20,7 @@ DISP_LED_PORT      equ PORTB; <5:7> R,G,B
 STROBE_LED_PORT      equ PORTD; <0:2> R,G,B
      ;Buttons     PORTB; <0:1> L,R
      ;Sensors     PORTE; <0:2> L,C,R
+     ;Motors	  PORTC; <0:3> 
     
 ;============== Definition of variables ===============
 ; =========================
@@ -116,6 +117,13 @@ motor_power_left_var                    EQU 0x46
 motor_power_right_var                   EQU 0x47
 motor_dir_left_var                      EQU 0x48    ; bit 0: 0=forward, 1=reverse
 motor_dir_right_var                     EQU 0x49    ; bit 0: 0=forward, 1=reverse
+
+touch_baseline_var                      EQU 0x4A    ; WAIT_FOR_TOUCH live baseline
+touch_count_var                         EQU 0x4B    ; consecutive above-threshold readings
+touch_timer_var                         EQU 0x4C    ; total touch duration (timeout guard)
+touch_sample1_var                       EQU 0x4D    ; 16-sample accumulator high
+touch_sample2_var                       EQU 0x4E    ; 16-sample accumulator low / result
+touch_sample3_var                       EQU 0x4F    ; sample loop counter / delta temp
 
 RACE_COL_var                            EQU 0x2B
 PERCEIVED_COLOUR_AT_SENSOR_BITS_var	EQU 0x3C
@@ -276,8 +284,13 @@ RIGHT_DRIVING_STATE_val    equ 0x2
 STOP_DRIVING_STATE_val        equ 0x3
 LOST_DRIVING_STATE_val        equ 0x4
 
-PWM_SPEED_FULL  equ 15      ; 75% duty cycle — cruise/turn outer wheel
-PWM_SPEED_STOP  equ 0       ; 0% — motor off
+PWM_SPEED_FULL  equ 15      ; 75% duty cycle ? cruise/turn outer wheel
+PWM_SPEED_STOP  equ 0       ; 0% ? motor off
+
+; WAIT_FOR_TOUCH tuning constants
+WFT_THRESH      equ 0x03    ; min delta (baseline-reading) to count as touch
+WFT_DEBOUNCE    equ 0x03    ; consecutive readings required for confirmation
+WFT_TIMEOUT     equ 0xC8    ; ~200 loops before timeout/baseline reset
 	
 
  
@@ -367,7 +380,7 @@ INT1_HANDLER:;RED BUTTON
     RETURN
     
     INT1_SET_PENDING_NAV_TO_STATE_SELECT:
-    ;;Check if in feedback colour state — lock colour as race colour and go to LLI
+    ;;Check if in feedback colour state ? lock colour as race colour and go to LLI
     MOVLW   feedback_color_state_val
     CPFSEQ  current_state_var,a
     BRA     INT1_DEFAULT_NAV_TO_SELECT
@@ -462,7 +475,7 @@ Init:
     CLRF    must_navigate_to_var,a
     ;Default values for sensor cal.
     ;<editor-fold defaultstate="collapsed" desc="SENSOR CAL DEFAULT VALUES">
-    ; Real measurements — sensor_plot.py dump 2026-04-11
+    ; Real measurements ? sensor_plot.py dump 2026-04-11
     ;================= RED surface =================
     ; L: R=10 G=23 B=8  C: R=39 G=50 B=29  R: R=30 G=17 B=6
     MOVLW   10
@@ -565,15 +578,15 @@ Init:
     MOVWF   CAL_R_BLUE_ON_BLACK_var,b
 ;</editor-fold>
 
-    ; PWM motor init — CCP1 on RC2 (right/IN3), CCP2 on RC1 (left/IN1)
-    ; IN2 and IN4 are grounded on the TC1508A board — forward/coast only
+    ; PWM motor init ? CCP1 on RC2 (right/IN3), CCP2 on RC1 (left/IN1)
+    ; IN2 and IN4 are grounded on the TC1508A board ? forward/coast only
     movlw   19
     movwf   PR2, a              ; PR2=19 -> 50 kHz PWM period at 4 MHz
     clrf    LATC, a
     bcf     TRISC, 2, a         ; RC2/CCP1 = output (right motor IN3)
     bcf     TRISC, 1, a         ; RC1/CCP2 = output (left motor IN1)
-    bcf     TRISC, 0, a         ; RC0 = output (left motor IN2 — reverse)
-    bcf     TRISC, 3, a         ; RC3 = output (right motor IN4 — reverse)
+    bcf     TRISC, 0, a         ; RC0 = output (left motor IN2 ? reverse)
+    bcf     TRISC, 3, a         ; RC3 = output (right motor IN4 ? reverse)
     BCF     LATC, 0, a          ; IN2 low (not reversing)
     BCF     LATC, 3, a          ; IN4 low (not reversing)
     clrf    T2CON, a
@@ -1073,9 +1086,15 @@ LLI_STATE:
     LLI_NAV_STOP:
     call    set_LLI_stop
 
-    ; Wait for RB1 press — ISR sets must_navigate_to_var = selecting_state_val
     LLI_STOP_WAIT:
-    call    NAV_STATE_IF_REQUIRED   ; returns immediately if no change; navigates away on RB1
+    BTFSS   PORTB, 1, a             ; skip if RB1 pressed
+    GOTO    LLI_STOP_WAIT
+    LLI_STOP_RB1_RELEASE:
+    BTFSC   PORTB, 1, a             ; wait for release
+    GOTO    LLI_STOP_RB1_RELEASE
+    MOVLW   selecting_state_val
+    MOVWF   must_navigate_to_var, a
+    call    NAV_STATE_IF_REQUIRED
     GOTO    LLI_STOP_WAIT
     
 ; LEFT_DRIVING_STATE_val    equ 0x0
@@ -1095,7 +1114,7 @@ LLI_STATE:
     MOVLW   PWM_SPEED_FULL
     MOVWF   motor_power_right_var, a
     call    set_motor_right
-    GOTO    LLI_NAV_LOOP        ; reached via BZ branch — must loop, not return
+    GOTO    LLI_NAV_LOOP        ; reached via BZ branch ? must loop, not return
 
     set_LLI_centre:
     MOVLW    CENTRE_DRIVING_STATE_val
@@ -1109,7 +1128,7 @@ LLI_STATE:
     MOVLW   PWM_SPEED_FULL
     MOVWF   motor_power_right_var, a
     call    set_motor_right
-    GOTO    LLI_NAV_LOOP        ; reached via BZ branch — must loop, not return
+    GOTO    LLI_NAV_LOOP        ; reached via BZ branch ? must loop, not return
 
     set_LLI_right:
     MOVLW    RIGHT_DRIVING_STATE_val
@@ -1123,7 +1142,7 @@ LLI_STATE:
     MOVLW   PWM_SPEED_STOP
     MOVWF   motor_power_right_var, a
     call    set_motor_right
-    GOTO    LLI_NAV_LOOP        ; reached via BZ branch — must loop, not return
+    GOTO    LLI_NAV_LOOP        ; reached via BZ branch ? must loop, not return
 
     set_LLI_lost:
     MOVLW    LOST_DRIVING_STATE_val
@@ -1137,7 +1156,7 @@ LLI_STATE:
     MOVLW   PWM_SPEED_FULL
     MOVWF   motor_power_right_var, a
     call    set_motor_right
-    GOTO    LLI_NAV_LOOP        ; reached via BZ branch — must loop, not return
+    GOTO    LLI_NAV_LOOP        ; reached via BZ branch ? must loop, not return
     set_LLI_stop:
     MOVLW    STOP_DRIVING_STATE_val
     MOVWF    DRIVING_STATE_var,a
@@ -1165,7 +1184,7 @@ LLI_STATE:
     set_motor_left_rev:
     MOVLW   PWM_SPEED_STOP
     MOVWF   CCPR2L, a                   ; IN1 off
-    BSF     LATC, 0, a                  ; IN2 high — full reverse
+    BSF     LATC, 0, a                  ; IN2 high ? full reverse
     RETURN
 
     ; Right motor: RC2/CCP1=IN3 (forward PWM), RC3=IN4 (reverse digital)
@@ -1180,35 +1199,24 @@ LLI_STATE:
     set_motor_right_rev:
     MOVLW   PWM_SPEED_STOP
     MOVWF   CCPR1L, a                   ; IN3 off
-    BSF     LATC, 3, a                  ; IN4 high — full reverse
+    BSF     LATC, 3, a                  ; IN4 high ? full reverse
     RETURN
 
 
     WAIT_FOR_LLI_TOUCH_START:
-    CALL    MAIN_CAP_ROUTINE
-    TSTFSZ  CAP_REG_var, a      ; skip RETURN if CAP_REG == 0 (no touch)
+    CALL    WAIT_FOR_TOUCH
     RETURN
-    BRA     WAIT_FOR_LLI_TOUCH_START
     
 ; ============================================================
-; MAIN_CAP_ROUTINE: samples RB2/AN8 twice, sets CAP_REG_var if touch detected
-; Touch detected = ADC reading < 0xFA (250)
+; MAIN_CAP_ROUTINE: samples RB2/AN8 twice via CTMU, sets CAP_REG_var if touch detected
+; Touch detected = ADC reading < 0x13 (baseline ~0x17, touch ~0x10)
 MAIN_CAP_ROUTINE:
-    MOVLB   0xF
-    BSF     ANSELB, 2, b        ; RB2 = analog (AN8)
-    MOVLB   0x0
-    MOVLW   0x11                ; ADCON0: CHS=01000 (AN8), ADON=1
-    MOVWF   ADCON0, a
-    CLRF    ADCON1, a           ; Vref+ = VDD, Vref- = VSS
-    MOVLW   00101011B           ; Left-justify, 12 Tad, Fosc/32
-    MOVWF   ADCON2, a
-
     CALL    CAP_TOUCH_ROUTINE
     CALL    _TOUCH_1S_DELAY
-    CALL    CAP_TOUCH_ROUTINE   ; Sample twice to avoid false triggers
+    CALL    CAP_TOUCH_ROUTINE   ; Second sample to confirm
 
-    MOVLW   0xFA                ; CAP_THRESHOLD = 250
-    CPFSLT  touch_adc_h, a     ; Skip if touch_adc_h < 250 (touch detected)
+    MOVLW   0x13                ; threshold midpoint: touch ~0x10, no-touch ~0x17
+    CPFSLT  touch_adc_h, a     ; skip if touch_adc_h < 0x13 (touch detected)
     BRA     MAIN_CAP_NO_TOUCH
     SETF    CAP_REG_var, a
     BRA     MAIN_CAP_DONE
@@ -1217,50 +1225,175 @@ MAIN_CAP_NO_TOUCH:
     CLRF    CAP_REG_var, a
 
 MAIN_CAP_DONE:
-    ; Restore RB2 to digital and ADC config for sensor readings
+    ; Restore ADCON for sensor readings
     MOVLB   0xF
     BCF     ANSELB, 2, b        ; RB2 back to digital
+    MOVLB   0x0
+    CLRF    ADCON1, a
+    MOVLW   00101011B           ; restore sensor ADC timing
+    MOVWF   ADCON2, a
+    RETURN
+
+
+; ============================================================
+; WAIT_FOR_TOUCH: blocks until a confirmed touch on RB2/AN8.
+; Self-calibrates baseline (4 readings) on entry, then tracks drift.
+; 16-sample averaging, debounce (WFT_DEBOUNCE), timeout guard (WFT_TIMEOUT).
+; Restores ANSELB/ADCON before returning.
+; Clobbers: touch_adc_h, touch_baseline_var, touch_count_var, touch_timer_var,
+;           touch_sample1_var, touch_sample2_var, touch_sample3_var
+WAIT_FOR_TOUCH:
+    ; --- Calibrate baseline: average 4 readings ---
+    CALL    CAP_TOUCH_ROUTINE
+    MOVF    touch_adc_h, W, a
+    MOVWF   touch_baseline_var, a
+    CALL    CAP_TOUCH_ROUTINE
+    MOVF    touch_adc_h, W, a
+    ADDWF   touch_baseline_var, f, a
+    CALL    CAP_TOUCH_ROUTINE
+    MOVF    touch_adc_h, W, a
+    ADDWF   touch_baseline_var, f, a
+    CALL    CAP_TOUCH_ROUTINE
+    MOVF    touch_adc_h, W, a
+    ADDWF   touch_baseline_var, f, a
+    ; Divide by 4 (two right-rotates, mask carry-in bits)
+    RRNCF   touch_baseline_var, f, a
+    RRNCF   touch_baseline_var, f, a
+    MOVLW   0x3F
+    ANDWF   touch_baseline_var, f, a
+    CLRF    touch_count_var, a
+    CLRF    touch_timer_var, a
+
+WFT_POLL:
+    ; Average 16 samples to reduce noise floor
+    CLRF    touch_sample1_var, a    ; accumulator high
+    CLRF    touch_sample2_var, a    ; accumulator low
+    MOVLW   0x10
+    MOVWF   touch_sample3_var, a
+WFT_AVG:
+    CALL    CAP_TOUCH_ROUTINE
+    MOVF    touch_adc_h, W, a
+    ADDWF   touch_sample2_var, f, a
+    MOVLW   0x00
+    ADDWFC  touch_sample1_var, f, a
+    DECFSZ  touch_sample3_var, f, a
+    BRA     WFT_AVG
+    ; Divide 16-bit sum by 16 (right-shift 4) -> result in touch_sample2_var
+    SWAPF   touch_sample2_var, f, a
+    MOVLW   0x0F
+    ANDWF   touch_sample2_var, f, a
+    SWAPF   touch_sample1_var, W, a
+    ANDLW   0xF0
+    IORWF   touch_sample2_var, f, a
+    MOVFF   touch_sample2_var, touch_adc_h
+
+    ; delta = baseline - reading (positive = touch pulled reading down)
+    MOVF    touch_adc_h, W, a
+    SUBWF   touch_baseline_var, W, a
+    BN      WFT_DRIFT_UP            ; negative = reading rose above baseline
+
+    MOVWF   touch_sample3_var, a    ; store delta as temp
+    MOVLW   WFT_THRESH
+    CPFSGT  touch_sample3_var, a    ; skip if delta > WFT_THRESH
+    BRA     WFT_NO_TOUCH
+
+    ; Above threshold — possible touch
+    INCF    touch_count_var, f, a
+    INCF    touch_timer_var, f, a
+    MOVLW   WFT_TIMEOUT
+    CPFSLT  touch_timer_var, a      ; skip if touch_timer < WFT_TIMEOUT
+    BRA     WFT_TIMEOUT_RST
+    MOVLW   WFT_DEBOUNCE
+    CPFSGT  touch_count_var, a      ; skip if touch_count > WFT_DEBOUNCE
+    BRA     WFT_POLL
+
+    ; *** TOUCH CONFIRMED — restore ADC and return ***
+    MOVLB   0xF
+    BCF     ANSELB, 2, b
     MOVLB   0x0
     CLRF    ADCON1, a
     MOVLW   00101011B
     MOVWF   ADCON2, a
     RETURN
 
+WFT_DRIFT_UP:
+    INCF    touch_baseline_var, f, a
+    CLRF    touch_count_var, a
+    CLRF    touch_timer_var, a
+    BRA     WFT_POLL
+
+WFT_NO_TOUCH:
+    CLRF    touch_count_var, a
+    CLRF    touch_timer_var, a
+    MOVF    touch_adc_h, W, a
+    CPFSGT  touch_baseline_var, a   ; skip if baseline > reading
+    BRA     WFT_BL_LOW
+    DECF    touch_baseline_var, f, a
+    BRA     WFT_POLL
+WFT_BL_LOW:
+    CPFSLT  touch_baseline_var, a   ; skip if baseline < reading
+    BRA     WFT_POLL                ; equal: do nothing
+    INCF    touch_baseline_var, f, a
+    BRA     WFT_POLL
+
+WFT_TIMEOUT_RST:
+    MOVFF   touch_adc_h, touch_baseline_var
+    CLRF    touch_count_var, a
+    CLRF    touch_timer_var, a
+    BRA     WFT_POLL
+
 
 ; ============================================================
-; CAP_TOUCH_ROUTINE: discharge/charge RB2, ADC sample -> touch_adc_h
-; Requires ADCON0 already set to AN8 channel by MAIN_CAP_ROUTINE
+; CAP_TOUCH_ROUTINE: CTMU-based cap touch on RB2/AN8 -> touch_adc_h
+; Self-contained: manages ANSELB, ADC, and CTMU internally.
+; CTMU regs at 0xF43-0xF45 are below the access bank — must use banked (,b) access.
 CAP_TOUCH_ROUTINE:
+    ; 1. Discharge RB2
     MOVLB   0xF
-    BCF     ANSELB, 2, b        ; Disable analog (digital drive mode)
+    BCF     ANSELB, 2, b        ; digital mode
+    MOVLB   0x0
+    BCF     TRISB, 2, a         ; output
+    BCF     LATB, 2, a          ; drive low — discharge pad
+    NOP
+    NOP
+
+    ; 2. Switch RB2 to analog input
+    BSF     TRISB, 2, a
+    MOVLB   0xF
+    BSF     ANSELB, 2, b        ; analog (AN8)
     MOVLB   0x0
 
-    BCF     TRISB, 2, a         ; RB2 = output
-    BCF     PORTB, 2, a         ; Discharge internal capacitor
+    ; 3. Configure ADC for AN8
+    MOVLW   0x21                ; CHS = AN8 (bits[6:2]=01000), ADON = 1
+    MOVWF   ADCON0, a
+    CLRF    ADCON1, a           ; Vref = VDD/VSS
+    MOVLW   00100110B           ; ADFM=0, ACQT=100 (8 Tad=128us), ADCS=110 (Fosc/64)
+    MOVWF   ADCON2, a
 
-    CALL    _TOUCH_1MS_DELAY
-
-    BSF     PORTB, 2, a         ; Charge capacitor
-    NOP
-    NOP
-    NOP
-    NOP
-    NOP
-    BSF     TRISB, 2, a         ; RB2 = input (stop driving)
-    NOP
-    NOP
-    NOP
-    NOP
-    NOP
-
+    ; 4. Configure CTMU (regs at 0xF43-0xF45, below access bank — banked access required)
     MOVLB   0xF
-    BSF     ANSELB, 2, b        ; Re-enable analog (AN8)
+    MOVLW   00000001B           ; CTMUICON: IRNG=01 (0.55 uA)
+    MOVWF   CTMUICON, b
+    MOVLW   10000000B           ; CTMUCONH: CTMUEN=1, IDISSEN=0, CTTRIG=0
+    MOVWF   CTMUCONH, b
+    MOVLW   00000001B           ; CTMUCONL: EDG1STAT=1 — close switch, current ON
+    MOVWF   CTMUCONL, b
     MOVLB   0x0
 
-    BSF     ADCON0, 1, a        ; GO = 1, start ADC conversion
+    ; 5. No pre-charge NOPs — CTMU charges from 0V during 128us ACQT window
+
+    ; 6. Trigger ADC — CTMU keeps charging pad+S/H during acquisition
+    BSF     ADCON0, 1, a        ; GO = 1
 CAP_ADC_POLL:
-    BTFSC   ADCON0, 1, a        ; Wait for GO = 0 (conversion complete)
+    BTFSC   ADCON0, 1, a
     BRA     CAP_ADC_POLL
+
+    ; 7. Stop CTMU after sampling
+    MOVLB   0xF
+    CLRF    CTMUCONL, b         ; EDG1STAT=0 — current off
+    CLRF    CTMUCONH, b         ; CTMUEN=0
+    MOVLB   0x0
+
     MOVFF   ADRESH, touch_adc_h
     RETURN
 
@@ -1376,21 +1509,21 @@ _TOUCH_1S_L1:
     CLRF    PERCEIVED_COLOUR_AT_SENSOR_BITS_var,a
     CLRF    has_read_all_black_on_sensor_array_var,a
 
-    ;Check if L = selected colour — fall through to check C regardless
+    ;Check if L = selected colour ? fall through to check C regardless
     MOVF    RACE_COL_var,W,a
     XORWF   sensor_L_read_colour_enum_var,a
     BNZ     skip_L_on_line_bit
     BSF     PERCEIVED_COLOUR_AT_SENSOR_BITS_var,2
     skip_L_on_line_bit:
 
-    ;Check if C = selected colour — fall through to check R regardless
+    ;Check if C = selected colour ? fall through to check R regardless
     MOVF    RACE_COL_var,W,a
     XORWF   sensor_C_read_colour_enum_var,a
     BNZ     skip_C_on_line_bit
     BSF     PERCEIVED_COLOUR_AT_SENSOR_BITS_var,1
     skip_C_on_line_bit:
 
-    ;Check if R = selected colour — fall through to all-black check regardless
+    ;Check if R = selected colour ? fall through to all-black check regardless
     MOVF    RACE_COL_var,W,a
     XORWF   sensor_R_read_colour_enum_var,a
     BNZ     skip_R_on_line_bit
