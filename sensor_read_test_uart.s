@@ -1,5 +1,8 @@
     PROCESSOR 18F45K22
 
+;; Look at our really cool sensor debugger made with UART
+;; Tried debugging the sensor with this in the prac session
+    
 ;; ---------- Configuration bits ----------
 CONFIG  FOSC   = INTIO67
 CONFIG  WDTEN  = OFF
@@ -94,9 +97,9 @@ Init:
 ; ============================================================
 Main:
     ; --- Red strobe ---
-    BSF     PORTD, 0, a
-    BCF     PORTD, 1, a
-    BCF     PORTD, 2, a
+    BCF     PORTD, 0, a
+    BSF     PORTD, 1, a
+    BSF     PORTD, 2, a
     call    LED_SETTLE
 
     MOVLW   ADC_AN5
@@ -112,9 +115,9 @@ Main:
     MOVWF   sensor_R_strobe_R, a
 
     ; --- Green strobe ---
-    BCF     PORTD, 0, a
-    BSF     PORTD, 1, a
-    BCF     PORTD, 2, a
+    BSF     PORTD, 0, a
+    BCF     PORTD, 1, a
+    BSF     PORTD, 2, a
     call    LED_SETTLE
 
     MOVLW   ADC_AN5
@@ -130,9 +133,9 @@ Main:
     MOVWF   sensor_R_strobe_G, a
 
     ; --- Blue strobe ---
-    BCF     PORTD, 0, a
-    BCF     PORTD, 1, a
-    BSF     PORTD, 2, a
+    BSF     PORTD, 0, a
+    BSF     PORTD, 1, a
+    BCF     PORTD, 2, a
     call    LED_SETTLE
 
     MOVLW   ADC_AN5
@@ -148,9 +151,9 @@ Main:
     MOVWF   sensor_R_strobe_B, a
 
     ; --- Strobes off ---
-    BCF     PORTD, 0, a
-    BCF     PORTD, 1, a
-    BCF     PORTD, 2, a
+    BSF     PORTD, 0, a
+    BSF     PORTD, 1, a
+    BSF     PORTD, 2, a
 
     ; --- Transmit frame: 0xAA sync + 9 bytes ---
     MOVLW   0xAA

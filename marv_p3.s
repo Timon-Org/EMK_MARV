@@ -1307,7 +1307,7 @@ WFT_AVG:
     CPFSGT  touch_sample3_var, a    ; skip if delta > WFT_THRESH
     BRA     WFT_NO_TOUCH
 
-    ; Above threshold ? possible touch
+    ; Above threshold — possible touch
     INCF    touch_count_var, f, a
     INCF    touch_timer_var, f, a
     MOVLW   WFT_TIMEOUT
@@ -1317,7 +1317,7 @@ WFT_AVG:
     CPFSGT  touch_count_var, a      ; skip if touch_count > WFT_DEBOUNCE
     BRA     WFT_POLL
 
-    ; *** TOUCH CONFIRMED ? restore ADC and return ***
+    ; *** TOUCH CONFIRMED — restore ADC and return ***
     MOVLB   0xF
     BCF     ANSELB, 2, b
     MOVLB   0x0
@@ -1356,14 +1356,14 @@ WFT_TIMEOUT_RST:
 ; ============================================================
 ; CAP_TOUCH_ROUTINE: CTMU-based cap touch on RB2/AN8 -> touch_adc_h
 ; Self-contained: manages ANSELB, ADC, and CTMU internally.
-; CTMU regs at 0xF43-0xF45 are below the access bank ? must use banked (,b) access.
+; CTMU regs at 0xF43-0xF45 are below the access bank — must use banked (,b) access.
 CAP_TOUCH_ROUTINE:
     ; 1. Discharge RB2
     MOVLB   0xF
     BCF     ANSELB, 2, b        ; digital mode
     MOVLB   0x0
     BCF     TRISB, 2, a         ; output
-    BCF     LATB, 2, a          ; drive low ? discharge pad
+    BCF     LATB, 2, a          ; drive low — discharge pad
     NOP
     NOP
 
@@ -1380,19 +1380,19 @@ CAP_TOUCH_ROUTINE:
     MOVLW   00100110B           ; ADFM=0, ACQT=100 (8 Tad=128us), ADCS=110 (Fosc/64)
     MOVWF   ADCON2, a
 
-    ; 4. Configure CTMU (regs at 0xF43-0xF45, below access bank ? banked access required)
+    ; 4. Configure CTMU (regs at 0xF43-0xF45, below access bank — banked access required)
     MOVLB   0xF
     MOVLW   00000001B           ; CTMUICON: IRNG=01 (0.55 uA)
     MOVWF   CTMUICON, b
     MOVLW   10000000B           ; CTMUCONH: CTMUEN=1, IDISSEN=0, CTTRIG=0
     MOVWF   CTMUCONH, b
-    MOVLW   00000001B           ; CTMUCONL: EDG1STAT=1 ? close switch, current ON
+    MOVLW   00000001B           ; CTMUCONL: EDG1STAT=1 — close switch, current ON
     MOVWF   CTMUCONL, b
     MOVLB   0x0
 
-    ; 5. No pre-charge NOPs ? CTMU charges from 0V during 128us ACQT window
+    ; 5. No pre-charge NOPs — CTMU charges from 0V during 128us ACQT window
 
-    ; 6. Trigger ADC ? CTMU keeps charging pad+S/H during acquisition
+    ; 6. Trigger ADC — CTMU keeps charging pad+S/H during acquisition
     BSF     ADCON0, 1, a        ; GO = 1
 CAP_ADC_POLL:
     BTFSC   ADCON0, 1, a
@@ -1400,7 +1400,7 @@ CAP_ADC_POLL:
 
     ; 7. Stop CTMU after sampling
     MOVLB   0xF
-    CLRF    CTMUCONL, b         ; EDG1STAT=0 ? current off
+    CLRF    CTMUCONL, b         ; EDG1STAT=0 — current off
     CLRF    CTMUCONH, b         ; CTMUEN=0
     MOVLB   0x0
 
@@ -2196,7 +2196,7 @@ display_error:
 
 
 ; ============================================================
-; HD44780 LCD DRIVER ? 4-bit mode
+; HD44780 LCD DRIVER — 4-bit mode
 ; Pins: RS=RD3  E=RD4  D4=RD5  D5=RD6  D6=RD7  D7=RB3
 ; ============================================================
 
@@ -2211,7 +2211,7 @@ LCD_INIT:
     ANDWF   LATD, f, a              ; D4-D6 = 0 (keep strobe LEDs)
     CALL    TIMEOUT_333ms           ; > 40 ms VDD rise time
 
-    ; Three 0x03 nibbles ? hardware reset sequence
+    ; Three 0x03 nibbles — hardware reset sequence
     MOVLW   0x03
     CALL    _LCD_SEND_NIBBLE
     CALL    _LCD_DELAY_5MS
@@ -2342,7 +2342,7 @@ _LCD_SEND_NIBBLE:
     BCF     LATB, 3, a
     BTFSC   lcd_temp_var, 3, a
     BSF     LATB, 3, a
-    ; Strobe E (RD4) high then low ? min 450 ns, 2 NOPs = 2 �s at 4 MHz
+    ; Strobe E (RD4) high then low — min 450 ns, 2 NOPs = 2 µs at 4 MHz
     BSF     LATD, 4, a
     NOP
     NOP
@@ -2350,9 +2350,9 @@ _LCD_SEND_NIBBLE:
     RETURN
 
 ; --- _LCD_DELAY_50US ---
-; ~50 �s busy-wait (covers 37 �s HD44780 command execution time).
+; ~50 µs busy-wait (covers 37 µs HD44780 command execution time).
 _LCD_DELAY_50US:
-    MOVLW   0x0D                    ; 13 x 4 cycles = 52 �s
+    MOVLW   0x0D                    ; 13 x 4 cycles = 52 µs
     MOVWF   lcd_temp_var, a
 _LCD_D50_L:
     DECFSZ  lcd_temp_var, f, a
