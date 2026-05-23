@@ -291,6 +291,7 @@ LOST_DRIVING_STATE_val        equ 0x4
 PWM_SPEED_FULL_LEFT_val  equ 16      ; > 75% duty cycle
 PWM_SPEED_FULL_RIGHT_val  equ 15      ; 75% duty cycle 
 PWM_SPEED_STOP_val  equ 0       ; 0% ? motor off
+PWM_SPEED_REV_val   equ 10
 
 ; WAIT_FOR_TOUCH tuning constants
 WFT_THRESH      equ 0x03    ; min delta (baseline-reading) to count as touch
@@ -1164,7 +1165,7 @@ LLI_STATE:
     
     has_read_all_black:
     INCF    black_confirm_count_var, F, a
-    MOVLW   0x20;Need 32 Consequtive black reads
+    MOVLW   0x10;Need 32 Consequtive black reads
     CPFSLT  black_confirm_count_var
     BRA	    set_LLI_stop
     GOTO    LLI_NAV_LOOP
@@ -1197,7 +1198,7 @@ LLI_STATE:
     set_motor_left_rev:
     MOVLW   PWM_SPEED_STOP_val
     MOVWF   CCPR2L, a                   ; IN1 off
-    BSF     LATC, 0, a                  ; IN2 high ? full reverse
+    BSF     LATC, 0, a                  ; IN2 high — full reverse
     RETURN
 
     ; Right motor: RC2/CCP1=IN3 (forward PWM), RC3=IN4 (reverse digital)
@@ -1212,7 +1213,7 @@ LLI_STATE:
     set_motor_right_rev:
     MOVLW   PWM_SPEED_STOP_val
     MOVWF   CCPR1L, a                   ; IN3 off
-    BSF     LATC, 3, a                  ; IN4 high ? full reverse
+    BSF     LATC, 3, a                  ; IN4 high — full reverse
     RETURN
 
 
